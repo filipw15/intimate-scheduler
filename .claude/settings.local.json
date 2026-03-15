@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git --yes 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm init -y 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm install next@latest react@latest react-dom@latest && npm install -D typescript@latest @types/node@latest @types/react@latest @types/react-dom@latest tailwindcss@latest postcss@latest autoprefixer@latest eslint@latest eslint-config-next@latest 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm install prisma@latest @prisma/client@latest 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npx prisma generate 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm install @prisma/adapter-pg pg @types/pg 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && cp .env.example .env 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && docker compose up -d db 2>&1)",
+      "Bash(docker version 2>&1 | head -5)",
+      "Bash(docker info 2>&1 | head -10)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npx prisma validate 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npx prisma migrate dev --name init 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm list dotenv 2>&1 | head -3)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm install resend jose 2>&1 | tail -5)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npx prisma migrate dev --name add_magic_link 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npx tsc --noEmit 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm uninstall @types/pg 2>&1 | tail -3 && npx prisma generate 2>&1)",
+      "Bash(node -e \"const m = require\\('@prisma/adapter-pg'\\); console.log\\(Object.keys\\(m\\)\\)\" 2>&1)",
+      "Bash(node -e \"const {PrismaPg} = require\\('@prisma/adapter-pg'\\); const a = new PrismaPg\\({connectionString:'postgresql://x:x@localhost/x'}\\); console.log\\('ok'\\)\" 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm install googleapis node-ical 2>&1 | tail -5)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && node -e \"const ni = require\\('node-ical'\\); console.log\\(typeof ni.parseICS, typeof ni.fromURL\\)\" 2>&1)",
+      "Bash(ls /c/Users/filip/Claudeprojects/intimate-scheduler/node_modules/node-ical/*.d.ts 2>/dev/null || ls /c/Users/filip/Claudeprojects/intimate-scheduler/node_modules/node-ical/ | head -10)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm install ics 2>&1 | tail -5)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && node -e \"const ics = require\\('ics'\\); console.log\\(Object.keys\\(ics\\)\\);\")",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm install node-cron && npm install --save-dev @types/node-cron 2>&1 | tail -5)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx tsc --noEmit 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx prisma generate 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm run build 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && ls postcss.config.*)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm install @tailwindcss/postcss --save-dev 2>&1 | tail -5)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && cp src/middleware.ts src/proxy.ts && echo \"done\")",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && sed -i 's/await resend\\\\.emails\\\\.send/await getResend\\(\\).emails.send/g' src/lib/email.ts && echo \"done\")",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && docker build -t intimate-scheduler . 2>&1)"
+    ]
+  }
+}

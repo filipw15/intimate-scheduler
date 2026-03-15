@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum TonePref {
+  playful
+  discreet
+  direct
+}
+
+enum CoupleStatus {
+  pending
+  active
+  dissolved
+}
+
+enum CalendarProvider {
+  google
+  ics_url
+}
+
+enum CalendarConnectionStatus {
+  active
+  expired
+  error
+}
+
+enum ProposalStatus {
+  pending
+  accepted
+  declined
+  expired
+}
+
+enum ProposalResponse {
+  yes
+  no
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  display_name String
+  tone_pref    TonePref  @default(discreet)
+  codename     String
+  timezone     String    @default("Europe/Stockholm")
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  // Relations
+  couple_as_a           Couple[]              @relation("CoupleUserA")
+  couple_as_b           Couple[]              @relation("CoupleUserB")
+  preference            Preference?
+  cycle_data            CycleData?
+  calendar_connections  CalendarConnection[]
+  availabilities        Availability[]
+  calendar_subscription CalendarSubscription?
+
+  @@map("users")
+}
+
+model Couple {
+  id           String       @id @default(uuid()) @db.Uuid
+  user_a_id    String       @db.Uuid
+  user_b_id    String?      @db.Uuid
+  status       CoupleStatus @default(pending)
+  invite_token String       @unique
+  created_at   DateTime     @default(now())
+  dissolved_at DateTime?
+
+  // Relations
+  user_a                 User                   @relation("CoupleUserA", fields: [user_a_id], references: [id])
+  user_b                 User?                  @relation("CoupleUserB", fields: [user_b_id], references: [id])
+  proposals              Proposal[]
+  calendar_subscriptions CalendarSubscription[]
+
+  @@map("couples")
+}
+
+model Preference {
+  id                     String   @id @default(uuid()) @db.Uuid
+  user_id                String   @unique @db.Uuid
+  child_bedtime_weekday  String   // HH:MM e.g. "20:00"
+  child_bedtime_weekend  String   // HH:MM e.g. "20:30"
+  evening_end_weekday    String   // HH:MM e.g. "23:00"
+  evening_end_weekend    String   // HH:MM e.g. "23:30"
+  recurring_blocks       Json     @default("[]") @db.JsonB
+  general_rules          Json     @default("[]") @db.JsonB
+  updated_at             DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("preferences")
+}
+
+model CycleData {
+  id                     String   @id @default(uuid()) @db.Uuid
+  user_id                String   @unique @db.Uuid
+  last_period_start      DateTime @db.Date
+  cycle_length_days      Int      @default(28)
+  period_length_days     Int      @default(5)
+  low_interest_start_day Int      // Day in cycle, e.g. 1
+  low_interest_end_day   Int      // Day in cycle, e.g. 7
+  updated_at             DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("cycle_data")
+}
+
+model CalendarConnection {
+  id             String                   @id @default(uuid()) @db.Uuid
+  user_id        String                   @db.Uuid
+  provider       CalendarProvider
+  oauth_token    String?                  // Encrypted, for Google
+  refresh_token  String?                  // Encrypted, for Google
+  ics_url        String?                  // For ICS/iCal subscription
+  last_synced_at DateTime?
+  status         CalendarConnectionStatus @default(active)
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("calendar_connections")
+}
+
+model Availability {
+  id           String   @id @default(uuid()) @db.Uuid
+  user_id      String   @db.Uuid
+  date         DateTime @db.Date
+  is_available Boolean
+  reason_code  String   // calendar_conflict | travel | early_morning | recurring_block | general_rule | cycle_low_interest | different_location | available
+  generated_at DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, date])
+  @@map("availability")
+}
+
+model Proposal {
+  id              String           @id @default(uuid()) @db.Uuid
+  couple_id       String           @db.Uuid
+  proposed_date   DateTime         @db.Date
+  proposed_time   String           // HH:MM, equals child bedtime for that day
+  status          ProposalStatus   @default(pending)
+  user_a_response ProposalResponse?
+  user_b_response ProposalResponse?
+  user_a_token    String           @unique
+  user_b_token    String           @unique
+  created_at      DateTime         @default(now())
+  expires_at      DateTime
+  resolved_at     DateTime?
+
+  // Relations
+  couple Couple @relation(fields: [couple_id], references: [id], onDelete: Cascade)
+
+  @@map("proposals")
+}
+
+model CalendarSubscription {
+  id           String @id @default(uuid()) @db.Uuid
+  user_id      String @unique @db.Uuid
+  couple_id    String @db.Uuid
+  webcal_token String @unique
+
+  // Relations
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  couple Couple @relation(fields: [couple_id], references: [id], onDelete: Cascade)
+
+  @@map("calendar_subscriptions")
+}
+
+model MagicLink {
+  id         String   @id @default(uuid()) @db.Uuid
+  email      String
+  token      String   @unique
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([email])
+  @@map("magic_links")
+}
