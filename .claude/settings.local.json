@@ -37,7 +37,9 @@
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx tsc --noEmit 2>&1 && echo \"TS OK\")",
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx tsc --noEmit 2>&1 && echo \"OK\")",
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm uninstall googleapis 2>&1 | tail -3)",
-      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm run build 2>&1 | tail -20)"
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm run build 2>&1 | tail -20)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm uninstall node-ical 2>&1)",
+      "Bash(cd /c/Users/filip/Claudeprojects/intimate-scheduler && npm run build 2>&1)"
     ]
   }
 }

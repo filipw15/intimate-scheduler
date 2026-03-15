@@ -1,4 +1,3 @@
-import * as ical from "node-ical";
 import { decrypt } from "@/lib/encryption";
 import type { CalendarConnection } from "@prisma/client";
 
@@ -18,18 +17,6 @@ export type CalendarEvent = {
   location: string | null;
   isAllDay: boolean;
 };
-
-// ─── Hjälpfunktioner ─────────────────────────────────────────────────────────
-
-/** node-ical returnerar location som string | { val: string } | undefined */
-function resolveLocation(raw: unknown): string | null {
-  if (!raw) return null;
-  if (typeof raw === "string") return raw || null;
-  if (typeof raw === "object" && "val" in (raw as object)) {
-    return String((raw as { val: unknown }).val) || null;
-  }
-  return null;
-}
 
 /**
  * Enkel stadsextraktion ur location-strängar.
@@ -191,6 +178,98 @@ export async function syncGoogleCalendar(
   return events;
 }
 
+// ─── Native ICS parser (RFC 5545) ────────────────────────────────────────────
+
+/** RFC 5545 line unfolding: CRLF or LF followed by a space/tab = continuation. */
+function unfoldIcs(text: string): string {
+  return text.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "");
+}
+
+/**
+ * Extract a named property from a VEVENT block.
+ * Handles: DTSTART:val, DTSTART;TZID=...:val, DTSTART;VALUE=DATE:val
+ */
+function getIcsProp(block: string, name: string): { params: string; value: string } | null {
+  const re = new RegExp(`^${name}(;[^:]*)?:(.+)$`, "mi");
+  const m = block.match(re);
+  if (!m) return null;
+  return { params: m[1] ?? "", value: m[2]!.trim() };
+}
+
+/**
+ * Parse an ICS date/datetime value.
+ * Formats: YYYYMMDD (all-day), YYYYMMDDTHHMMSSZ (UTC), YYYYMMDDTHHMMSS (local → treated as UTC)
+ */
+function parseIcsDate(value: string, params: string): { dt: Date; isAllDay: boolean } | null {
+  const allDay = params.includes("VALUE=DATE") || /^\d{8}$/.test(value);
+
+  if (allDay) {
+    if (!/^\d{8}$/.test(value)) return null;
+    const dt = new Date(Date.UTC(
+      parseInt(value.slice(0, 4)),
+      parseInt(value.slice(4, 6)) - 1,
+      parseInt(value.slice(6, 8))
+    ));
+    return { dt, isAllDay: true };
+  }
+
+  const m = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
+  if (!m) return null;
+  const dt = new Date(Date.UTC(
+    parseInt(m[1]!), parseInt(m[2]!) - 1, parseInt(m[3]!),
+    parseInt(m[4]!), parseInt(m[5]!), parseInt(m[6]!)
+  ));
+  return { dt, isAllDay: false };
+}
+
+function parseIcs(text: string, from: Date, to: Date): CalendarEvent[] {
+  const unfolded = unfoldIcs(text);
+  const events: CalendarEvent[] = [];
+  const veventRe = /BEGIN:VEVENT([\s\S]*?)END:VEVENT/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = veventRe.exec(unfolded)) !== null) {
+    const block = match[1]!;
+
+    const startProp = getIcsProp(block, "DTSTART");
+    if (!startProp) continue;
+    const startParsed = parseIcsDate(startProp.value, startProp.params);
+    if (!startParsed) continue;
+
+    const endProp = getIcsProp(block, "DTEND");
+    const endParsed = endProp ? parseIcsDate(endProp.value, endProp.params) : null;
+    const endDt = endParsed?.dt ?? startParsed.dt;
+
+    if (startParsed.dt > to) continue;
+    if (endDt < from) continue;
+
+    const locationProp = getIcsProp(block, "LOCATION");
+    const location = locationProp ? extractCity(locationProp.value || null) : null;
+
+    if (startParsed.isAllDay) {
+      events.push({
+        date:     startParsed.dt.toISOString().slice(0, 10),
+        endDate:  endDt.toISOString().slice(0, 10),
+        startDt:  null,
+        endDt:    null,
+        location,
+        isAllDay: true,
+      });
+    } else {
+      events.push({
+        date:     startParsed.dt.toISOString().slice(0, 10),
+        endDate:  null,
+        startDt:  startParsed.dt,
+        endDt,
+        location,
+        isAllDay: false,
+      });
+    }
+  }
+
+  return events;
+}
+
 // ─── ICS ─────────────────────────────────────────────────────────────────────
 
 export async function syncIcsCalendar(
@@ -200,48 +279,13 @@ export async function syncIcsCalendar(
     throw new Error("Saknar ICS-URL.");
   }
 
-  const data = await ical.async.fromURL(connection.ics_url);
+  const res = await fetch(connection.ics_url);
+  if (!res.ok) {
+    throw new Error(`ICS fetch misslyckades (${res.status})`);
+  }
+  const text = await res.text();
+
   const now = new Date();
   const in15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
-  const events: CalendarEvent[] = [];
-
-  for (const raw of Object.values(data)) {
-    if (!raw || raw.type !== "VEVENT") continue;
-    const component = raw as ical.VEvent;
-
-    const startRaw = component.start;
-    const endRaw   = component.end;
-    if (!startRaw) continue;
-
-    const startDt = startRaw instanceof Date ? startRaw : new Date(startRaw);
-    if (isNaN(startDt.getTime())) continue;
-    if (startDt > in15Days) continue;
-
-    const endDtRaw = endRaw ? (endRaw instanceof Date ? endRaw : new Date(endRaw)) : startDt;
-    if (endDtRaw < now) continue;
-
-    const isAllDay = (component as unknown as { datetype?: string }).datetype === "date";
-
-    if (isAllDay) {
-      events.push({
-        date:     startDt.toISOString().slice(0, 10),
-        endDate:  endDtRaw.toISOString().slice(0, 10),
-        startDt:  null,
-        endDt:    null,
-        location: extractCity(resolveLocation(component.location)),
-        isAllDay: true,
-      });
-    } else {
-      events.push({
-        date:     startDt.toISOString().slice(0, 10),
-        endDate:  null,
-        startDt,
-        endDt:    endDtRaw,
-        location: extractCity(resolveLocation(component.location)),
-        isAllDay: false,
-      });
-    }
-  }
-
-  return events;
+  return parseIcs(text, now, in15Days);
 }

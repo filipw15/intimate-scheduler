@@ -3,6 +3,44 @@ import { prisma } from "@/lib/prisma";
 import { sendProposalEmail, sendConfirmationEmail } from "@/lib/email";
 import type { TonePref } from "@prisma/client";
 
+const DEFAULT_TZ = "Europe/Stockholm";
+
+/**
+ * Returnerar datum (Date[]) då användaren är tillgänglig inom [from, to].
+ * Om Availability-poster finns i databasen används de direkt.
+ * Annars beräknas tillgänglighet on-the-fly från preferenser, blockerare,
+ * generella regler och cykeldata (kriterierna 6–9, inga kalenderevents).
+ */
+async function getAvailableDates(userId: string, from: Date, to: Date): Promise<Date[]> {
+  const dbRecords = await prisma.availability.findMany({
+    where: { user_id: userId, is_available: true, date: { gte: from, lte: to } },
+    select: { date: true },
+  });
+
+  if (dbRecords.length > 0) {
+    return dbRecords.map((r) => r.date);
+  }
+
+  // Ingen kalenderdata — beräkna från preferenser/cykeldata
+  const [pref, cycleData] = await Promise.all([
+    prisma.preference.findUnique({ where: { user_id: userId } }),
+    prisma.cycleData.findUnique({ where: { user_id: userId } }),
+  ]);
+
+  if (!pref) return [];
+
+  // Dynamisk import för att hålla node-ical-kedjan utanför instrumentation-bundeln
+  const { evaluateDay } = await import("@/lib/matching");
+  const dates: Date[] = [];
+
+  for (let d = new Date(from); d <= to; d = new Date(d.getTime() + 24 * 60 * 60 * 1000)) {
+    const result = evaluateDay(d, [], pref, cycleData, DEFAULT_TZ);
+    if (result.is_available) dates.push(new Date(d));
+  }
+
+  return dates;
+}
+
 /**
  * Genererar Proposals för ett Couple baserat på bägge parters Availability.
  * Skickar notis-mejl till bägge parter för varje nytt Proposal.
@@ -55,31 +93,15 @@ export async function generateWeeklyProposals(
   const fromDate = new Date(today.getTime() + minDaysAhead * 24 * 60 * 60 * 1000);
   const toDate = new Date(today.getTime() + lookAheadDays * 24 * 60 * 60 * 1000);
 
-  // 3. Hämta Availability för bägge parter
-  const [availA, availB] = await Promise.all([
-    prisma.availability.findMany({
-      where: {
-        user_id: couple.user_a_id,
-        is_available: true,
-        date: { gte: fromDate, lte: toDate },
-      },
-      select: { date: true },
-    }),
-    prisma.availability.findMany({
-      where: {
-        user_id: couple.user_b_id,
-        is_available: true,
-        date: { gte: fromDate, lte: toDate },
-      },
-      select: { date: true },
-    }),
+  // 3. Hämta tillgängliga datum för bägge parter (DB-poster eller on-the-fly)
+  const [datesA, datesB] = await Promise.all([
+    getAvailableDates(couple.user_a_id, fromDate, toDate),
+    getAvailableDates(couple.user_b_id, fromDate, toDate),
   ]);
 
   // 4. Hitta datum där bägge är GO
-  const setA = new Set(availA.map((a) => a.date.toISOString().slice(0, 10)));
-  const matchingDates = availB
-    .filter((b) => setA.has(b.date.toISOString().slice(0, 10)))
-    .map((b) => b.date);
+  const setA = new Set(datesA.map((d) => d.toISOString().slice(0, 10)));
+  const matchingDates = datesB.filter((d) => setA.has(d.toISOString().slice(0, 10)));
 
   if (matchingDates.length === 0) return 0;
 
