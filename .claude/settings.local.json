@@ -33,7 +33,8 @@
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm install @tailwindcss/postcss --save-dev 2>&1 | tail -5)",
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && cp src/middleware.ts src/proxy.ts && echo \"done\")",
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && sed -i 's/await resend\\\\.emails\\\\.send/await getResend\\(\\).emails.send/g' src/lib/email.ts && echo \"done\")",
-      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && docker build -t intimate-scheduler . 2>&1)"
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && docker build -t intimate-scheduler . 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx tsc --noEmit 2>&1 && echo \"TS OK\")"
     ]
   }
 }

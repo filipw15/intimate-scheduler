@@ -1,8 +1,10 @@
 import cron from "node-cron";
 import { prisma } from "@/lib/prisma";
-import { generateAvailabilityForRange } from "@/lib/matching";
 import { generateWeeklyProposals } from "@/lib/proposal-generator";
 import { sendMaintenanceEmail } from "@/lib/email";
+// NOTE: matching.ts (→ calendar-sync.ts → googleapis) is NOT imported at module level.
+// It is dynamically imported inside runCalendarSync() to prevent the googleapis BigInt
+// error when instrumentation.ts loads this module during Next.js startup.
 
 // ─── Kalendersynk (var 30:e minut) ───────────────────────────────────────────
 
@@ -21,6 +23,9 @@ async function runCalendarSync(): Promise<void> {
 
   let synced = 0;
   let failed = 0;
+
+  // Lazy import: keeps googleapis out of the instrumentation bundle
+  const { generateAvailabilityForRange } = await import("@/lib/matching");
 
   for (const { user_id } of connections) {
     try {
