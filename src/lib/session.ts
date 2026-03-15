@@ -33,14 +33,17 @@ export async function verifySessionToken(
 
 export async function setSessionCookie(userId: string): Promise<void> {
   const token = await createSessionToken(userId);
-  const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
+  const secure = (process.env.BASE_URL ?? "").startsWith("https://");
+  const attrs = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    secure,
+    sameSite: "lax" as const,
     maxAge: SESSION_DAYS * 24 * 60 * 60,
     path: "/",
-  });
+  };
+  console.log("[session] setSessionCookie attrs:", { secure, sameSite: attrs.sameSite, maxAge: attrs.maxAge });
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE_NAME, token, attrs);
 }
 
 export async function clearSessionCookie(): Promise<void> {
