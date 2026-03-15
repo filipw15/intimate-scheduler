@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/session";
 
+const BASE_URL = process.env.BASE_URL ?? "http://localhost:3200";
+
 // Routes som är öppna utan inloggning
 const PUBLIC_PATHS = [
   /^\/$/,                              // Landing/login-sida
@@ -21,22 +23,25 @@ function isPublic(pathname: string): boolean {
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const pub = isPublic(pathname);
 
-  if (isPublic(pathname)) {
+  console.log(`[proxy] ${req.method} ${pathname} → ${pub ? "PUBLIC" : "PROTECTED"}`);
+
+  if (pub) {
     return NextResponse.next();
   }
 
   const session = await getSessionFromRequest(req);
 
   if (!session) {
-    // API-routes returnerar 401, sidor redirectar till login
     if (pathname.startsWith("/api/")) {
+      console.log(`[proxy] 401 for ${pathname}`);
       return NextResponse.json({ error: "Ej autentiserad." }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/", req.url));
+    console.log(`[proxy] redirect → / for ${pathname}`);
+    return NextResponse.redirect(`${BASE_URL}/`);
   }
 
-  // Vidarebefordra userId i header så att route handlers slipper verifiera igen
   const headers = new Headers(req.headers);
   headers.set("x-user-id", session.userId);
   return NextResponse.next({ request: { headers } });

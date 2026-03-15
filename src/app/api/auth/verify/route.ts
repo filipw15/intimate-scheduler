@@ -9,6 +9,7 @@ function redirect(path: string) {
 }
 
 export async function GET(req: NextRequest) {
+  console.log("[verify] handler reached, token param:", req.nextUrl.searchParams.get("token")?.slice(0, 8) + "...");
   const token = req.nextUrl.searchParams.get("token");
 
   if (!token) {
