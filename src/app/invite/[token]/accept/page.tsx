@@ -19,11 +19,16 @@ export default function AcceptPage() {
   const [state, setState] = useState<AcceptState>({ kind: "loading" });
 
   useEffect(() => {
-    // Rensa pending_invite oavsett utfall
-    localStorage.removeItem("pending_invite");
-
     fetch(`/api/couple/accept/${token}`, { method: "POST" })
       .then(async (r) => {
+        // Inte inloggad — spara token och skicka till login-flödet
+        if (r.status === 401) {
+          localStorage.setItem("pending_invite", token);
+          window.location.href = `/?invite=${token}`;
+          return;
+        }
+        // Rensa pending_invite nu när API-anropet gick igenom
+        localStorage.removeItem("pending_invite");
         const data = await r.json() as {
           couple_id?: string;
           partner_name?: string;

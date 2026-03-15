@@ -35,7 +35,9 @@
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && sed -i 's/await resend\\\\.emails\\\\.send/await getResend\\(\\).emails.send/g' src/lib/email.ts && echo \"done\")",
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && docker build -t intimate-scheduler . 2>&1)",
       "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx tsc --noEmit 2>&1 && echo \"TS OK\")",
-      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx tsc --noEmit 2>&1 && echo \"OK\")"
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npx tsc --noEmit 2>&1 && echo \"OK\")",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm uninstall googleapis 2>&1 | tail -3)",
+      "Bash(cd \"C:\\\\Users\\\\filip\\\\Claudeprojects\\\\intimate-scheduler\" && npm run build 2>&1 | tail -20)"
     ]
   }
 }

@@ -1,4 +1,3 @@
-import { google } from "googleapis";
 import * as ical from "node-ical";
 import { decrypt } from "@/lib/encryption";
 import type { CalendarConnection } from "@prisma/client";
@@ -46,34 +45,72 @@ function extractCity(location: string | null | undefined): string | null {
   return candidate.replace(/^\w{2}\s+\d+$/, "").trim().slice(0, 100) || null;
 }
 
-// ─── Google Calendar ──────────────────────────────────────────────────────────
+// ─── Google OAuth (native fetch, no googleapis package) ───────────────────────
 
-function createOAuth2Client() {
-  return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    `${BASE_URL}/api/calendar/callback/google`
-  );
-}
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_CALENDAR_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
 export function getGoogleAuthUrl(state: string): string {
-  const oauth2 = createOAuth2Client();
-  return oauth2.generateAuthUrl({
-    access_type: "offline",
-    prompt: "consent",
-    scope: ["https://www.googleapis.com/auth/calendar.readonly"],
+  const params = new URLSearchParams({
+    client_id:     process.env.GOOGLE_CLIENT_ID ?? "",
+    redirect_uri:  `${BASE_URL}/api/calendar/callback/google`,
+    response_type: "code",
+    scope:         "https://www.googleapis.com/auth/calendar.readonly",
+    access_type:   "offline",
+    prompt:        "consent",
     state,
   });
+  return `${GOOGLE_AUTH_URL}?${params.toString()}`;
 }
 
 export async function exchangeGoogleCode(
   code: string
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  const oauth2 = createOAuth2Client();
-  const { tokens } = await oauth2.getToken(code);
-  if (!tokens.access_token) throw new Error("Inget access_token från Google.");
-  if (!tokens.refresh_token) throw new Error("Inget refresh_token från Google. Revoke app access och försök igen.");
-  return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token };
+  const res = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id:     process.env.GOOGLE_CLIENT_ID ?? "",
+      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      redirect_uri:  `${BASE_URL}/api/calendar/callback/google`,
+      grant_type:    "authorization_code",
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Token exchange misslyckades (${res.status}): ${err}`);
+  }
+
+  const data = await res.json() as { access_token?: string; refresh_token?: string };
+  if (!data.access_token) throw new Error("Inget access_token från Google.");
+  if (!data.refresh_token) throw new Error("Inget refresh_token från Google. Återkalla appens åtkomst och försök igen.");
+  return { accessToken: data.access_token, refreshToken: data.refresh_token };
+}
+
+async function refreshGoogleAccessToken(refreshToken: string): Promise<string> {
+  const res = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id:     process.env.GOOGLE_CLIENT_ID ?? "",
+      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      grant_type:    "refresh_token",
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}) as Record<string, unknown>) as { error?: string };
+    // invalid_grant = token revoked or expired beyond refresh
+    throw new Error(err.error === "invalid_grant" ? "invalid_grant" : `Token refresh misslyckades: ${res.status}`);
+  }
+
+  const data = await res.json() as { access_token?: string };
+  if (!data.access_token) throw new Error("Inget access_token vid token refresh.");
+  return data.access_token;
 }
 
 export async function syncGoogleCalendar(
@@ -83,48 +120,66 @@ export async function syncGoogleCalendar(
     throw new Error("Saknar tokens för Google Calendar.");
   }
 
-  const accessToken = decrypt(connection.oauth_token);
+  let accessToken = decrypt(connection.oauth_token);
   const refreshToken = decrypt(connection.refresh_token);
 
-  const oauth2 = createOAuth2Client();
-  oauth2.setCredentials({ access_token: accessToken, refresh_token: refreshToken });
-
-  const calendar = google.calendar({ version: "v3", auth: oauth2 });
   const now = new Date();
-  const in15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000); // +1 för tomorrow-check
+  const in15Days = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
 
-  const response = await calendar.events.list({
-    calendarId: "primary",
-    timeMin: now.toISOString(),
-    timeMax: in15Days.toISOString(),
-    singleEvents: true,
-    orderBy: "startTime",
-    maxResults: 250,
-    fields: "items(start,end,location)", // Kasserar namn, beskrivning, deltagare
+  const params = new URLSearchParams({
+    timeMin:      now.toISOString(),
+    timeMax:      in15Days.toISOString(),
+    singleEvents: "true",
+    orderBy:      "startTime",
+    maxResults:   "250",
+    fields:       "items(start,end,location)",
   });
 
+  const fetchEvents = (token: string) =>
+    fetch(`${GOOGLE_CALENDAR_URL}?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+  let res = await fetchEvents(accessToken);
+
+  // Access token expired → refresh and retry once
+  if (res.status === 401) {
+    accessToken = await refreshGoogleAccessToken(refreshToken);
+    res = await fetchEvents(accessToken);
+  }
+
+  if (!res.ok) {
+    throw new Error(`Google Calendar API returnerade ${res.status}`);
+  }
+
+  type GItem = {
+    start?: { date?: string; dateTime?: string };
+    end?:   { date?: string; dateTime?: string };
+    location?: string;
+  };
+  const data = await res.json() as { items?: GItem[] };
   const events: CalendarEvent[] = [];
 
-  for (const item of response.data.items ?? []) {
+  for (const item of data.items ?? []) {
     if (!item.start) continue;
 
     const isAllDay = Boolean(item.start.date && !item.start.dateTime);
 
     if (isAllDay) {
       events.push({
-        date: item.start.date!,
-        endDate: item.end?.date ?? null,  // Exklusivt slutdatum för flerdagsevent
-        startDt: null,
-        endDt: null,
+        date:     item.start.date!,
+        endDate:  item.end?.date ?? null,
+        startDt:  null,
+        endDt:    null,
         location: extractCity(item.location),
         isAllDay: true,
       });
     } else {
       const startDt = new Date(item.start.dateTime!);
-      const endDt = item.end?.dateTime ? new Date(item.end.dateTime) : startDt;
+      const endDt   = item.end?.dateTime ? new Date(item.end.dateTime) : startDt;
       events.push({
-        date: startDt.toISOString().slice(0, 10),
-        endDate: null,
+        date:     startDt.toISOString().slice(0, 10),
+        endDate:  null,
         startDt,
         endDt,
         location: extractCity(item.location),
@@ -155,7 +210,7 @@ export async function syncIcsCalendar(
     const component = raw as ical.VEvent;
 
     const startRaw = component.start;
-    const endRaw = component.end;
+    const endRaw   = component.end;
     if (!startRaw) continue;
 
     const startDt = startRaw instanceof Date ? startRaw : new Date(startRaw);
@@ -169,19 +224,19 @@ export async function syncIcsCalendar(
 
     if (isAllDay) {
       events.push({
-        date: startDt.toISOString().slice(0, 10),
-        endDate: endDtRaw.toISOString().slice(0, 10),
-        startDt: null,
-        endDt: null,
+        date:     startDt.toISOString().slice(0, 10),
+        endDate:  endDtRaw.toISOString().slice(0, 10),
+        startDt:  null,
+        endDt:    null,
         location: extractCity(resolveLocation(component.location)),
         isAllDay: true,
       });
     } else {
       events.push({
-        date: startDt.toISOString().slice(0, 10),
-        endDate: null,
+        date:     startDt.toISOString().slice(0, 10),
+        endDate:  null,
         startDt,
-        endDt: endDtRaw,
+        endDt:    endDtRaw,
         location: extractCity(resolveLocation(component.location)),
         isAllDay: false,
       });
