@@ -9,6 +9,7 @@ import Button from "@/components/Button";
 
 type AcceptState =
   | { kind: "loading" }
+  | { kind: "needs_login" }
   | { kind: "success"; partnerName: string | null }
   | { kind: "error"; message: string };
 
@@ -21,13 +22,12 @@ export default function AcceptPage() {
   useEffect(() => {
     fetch(`/api/couple/accept/${token}`, { method: "POST" })
       .then(async (r) => {
-        // Inte inloggad — spara token och skicka till login-flödet
         if (r.status === 401) {
+          // Inte inloggad — spara token och visa login-uppmaning
           localStorage.setItem("pending_invite", token);
-          window.location.href = `/?invite=${token}`;
+          setState({ kind: "needs_login" });
           return;
         }
-        // Rensa pending_invite nu när API-anropet gick igenom
         localStorage.removeItem("pending_invite");
         const data = await r.json() as {
           couple_id?: string;
@@ -71,7 +71,7 @@ export default function AcceptPage() {
             </h1>
           </div>
 
-          <AcceptContent state={state} />
+          <AcceptContent state={state} token={token} />
         </Card>
       </div>
     </main>
@@ -80,10 +80,60 @@ export default function AcceptPage() {
 
 // ─── Innehåll baserat på tillstånd ────────────────────────────────────────────
 
-function AcceptContent({ state }: { state: AcceptState }) {
+function AcceptContent({ state, token }: { state: AcceptState; token: string }) {
   if (state.kind === "loading") {
     return (
       <p style={{ fontSize: 15, color: "var(--color-text-secondary)" }}>Aktiverar koppling…</p>
+    );
+  }
+
+  if (state.kind === "needs_login") {
+    return (
+      <div>
+        <div
+          aria-hidden="true"
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            backgroundColor: "rgba(139,168,154,0.15)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 18,
+            fontSize: 20,
+          }}
+        >
+          ↗
+        </div>
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: "var(--color-text)",
+            marginBottom: 10,
+          }}
+        >
+          Du måste logga in först
+        </h2>
+        <p
+          style={{
+            fontSize: 15,
+            color: "var(--color-text-secondary)",
+            lineHeight: 1.6,
+            marginBottom: 24,
+          }}
+        >
+          Logga in med din e-postadress så aktiveras kopplingen automatiskt.
+        </p>
+        <Button
+          variant="primary"
+          fullWidth
+          onClick={() => { window.location.href = `/?invite=${token}`; }}
+        >
+          Logga in
+        </Button>
+      </div>
     );
   }
 

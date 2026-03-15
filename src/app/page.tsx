@@ -31,28 +31,27 @@ function LoginForm() {
   const [formError, setFormError]   = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
 
-  // Spara invite-token i localStorage om den finns i URL:en
+  // Spara invite-token och kolla om redan inloggad — ett enda effect för att
+  // garantera att pending_invite är satt INNAN vi eventuellt redirectar.
   useEffect(() => {
     if (inviteToken) {
       localStorage.setItem("pending_invite", inviteToken);
     }
-  }, [inviteToken]);
 
-  // Omdirigera om redan inloggad
-  useEffect(() => {
     fetch("/api/user/profile")
       .then((r) => {
-        if (r.ok) {
-          const pendingInvite = localStorage.getItem("pending_invite");
-          if (pendingInvite) {
-            window.location.href = `/invite/${pendingInvite}/accept`;
-          } else {
-            window.location.href = "/dashboard";
-          }
+        // Redirecta BARA om användaren faktiskt är inloggad (200 OK).
+        // Vid 401 eller annat: stanna kvar och visa login-formuläret.
+        if (!r.ok) return;
+        const pendingInvite = localStorage.getItem("pending_invite");
+        if (pendingInvite) {
+          window.location.href = `/invite/${pendingInvite}/accept`;
+        } else {
+          window.location.href = "/dashboard";
         }
       })
       .catch(() => {});
-  }, []);
+  }, [inviteToken]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
