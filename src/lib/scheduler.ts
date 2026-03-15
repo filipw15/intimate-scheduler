@@ -24,17 +24,23 @@ async function runCalendarSync(): Promise<void> {
   let synced = 0;
   let failed = 0;
 
-  // Lazy import: keeps googleapis out of the instrumentation bundle
-  const { generateAvailabilityForRange } = await import("@/lib/matching");
+  // Lazy import to keep node-ical / heavy deps out of the instrumentation bundle.
+  // Wrapped in try/catch to surface the exact module that causes BigInt or other
+  // Turbopack standalone errors at runtime.
+  let generateAvailabilityForRange: (userId: string, from: Date, to: Date) => Promise<void>;
+  try {
+    ({ generateAvailabilityForRange } = await import("@/lib/matching"));
+  } catch (importErr) {
+    console.error("[scheduler] Dynamisk import av matching.ts misslyckades:", importErr);
+    console.error("[scheduler] Stack:", importErr instanceof Error ? importErr.stack : String(importErr));
+    return;
+  }
 
   for (const { user_id } of connections) {
     try {
       await generateAvailabilityForRange(user_id, today, in14Days);
       synced++;
     } catch (err) {
-      // generateAvailabilityForRange hanterar sync-fel internt och sätter
-      // connection.status = "error" | "expired". Det kastar normalt inte,
-      // men fånga oväntade fel här.
       console.error(`[scheduler] Kalendersynk misslyckades för user ${user_id}:`, err);
       failed++;
     }

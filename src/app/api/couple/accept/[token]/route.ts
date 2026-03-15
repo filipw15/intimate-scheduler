@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { findCurrentCouple } from "@/lib/couple";
+import { generateWeeklyProposals } from "@/lib/proposal-generator";
 
 export async function POST(
   req: NextRequest,
@@ -45,6 +46,11 @@ export async function POST(
       user_b: { select: { display_name: true } },
     },
   });
+
+  // Trigga proposal-generering direkt — fire-and-forget
+  generateWeeklyProposals(updated.id)
+    .then((n) => console.log(`[accept] Par ${updated.id}: ${n} förslag genererade direkt.`))
+    .catch((err) => console.error(`[accept] Proposal-generering misslyckades för par ${updated.id}:`, err));
 
   return NextResponse.json({
     couple_id: updated.id,

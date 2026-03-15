@@ -5,6 +5,18 @@ import {
   validateRecurringBlocks,
   validateGeneralRules,
 } from "@/lib/validation";
+import { generateWeeklyProposals } from "@/lib/proposal-generator";
+
+function triggerProposals(userId: string) {
+  prisma.couple.findFirst({
+    where: { OR: [{ user_a_id: userId }, { user_b_id: userId }], status: "active" },
+    select: { id: true },
+  }).then((couple) => {
+    if (!couple) return;
+    return generateWeeklyProposals(couple.id)
+      .then((n) => console.log(`[preferences] Par ${couple.id}: ${n} förslag genererade efter uppdatering.`));
+  }).catch((err) => console.error("[preferences] Proposal-trigning misslyckades:", err));
+}
 
 const DEFAULTS = {
   child_bedtime_weekday: "20:00",
@@ -94,6 +106,8 @@ export async function PUT(req: NextRequest) {
     update: data,
     create: { user_id: userId, ...data },
   });
+
+  triggerProposals(userId);
 
   return NextResponse.json(pref);
 }
